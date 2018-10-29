@@ -181,17 +181,17 @@ void lwip_periodic_handle(void)
       lwip_dhcp_process_handle();  //DHCP处理
     }
 
-	com_send_str(&usart3, "hello world uart3\r\n", sizeof("hello world uart3\r\n"));
-	com_send_str(&usart4, "hello world uart4\r\n", sizeof("hello world uart4\r\n"));
-	com_send_str(&usart5, "hello world uart5\r\n", sizeof("hello world uart5\r\n"));
-	com_send_str(&usart6, "hello world uart6\r\n", sizeof("hello world uart6\r\n"));
+//	com_send_str(&usart3, "hello world uart3\r\n", sizeof("hello world uart3\r\n"));
+//	com_send_str(&usart4, "hello world uart4\r\n", sizeof("hello world uart4\r\n"));
+//	com_send_str(&usart5, "hello world uart5\r\n", sizeof("hello world uart5\r\n"));
+//	com_send_str(&usart6, "hello world uart6\r\n", sizeof("hello world uart6\r\n"));
 
-	receive_str_manage(&usart2, 0, 0);
+//	receive_str_manage(&usart2, 0, 0);
 	receive_str_manage(&usart1, 0, 0);
-	receive_str_manage(&usart3, 0, 0);
-	receive_str_manage(&usart4, 0, 0);
+//	receive_str_manage(&usart3, 0, 0);
+//	receive_str_manage(&usart4, 0, 0);
 	receive_str_manage(&usart6, 0, 0);
-	receive_str_manage(&usart5, 0, 0);
+//	receive_str_manage(&usart5, 0, 0);
   }
 
   //每60s执行一次DHCP粗糙处理
