@@ -1,6 +1,13 @@
 #include "usart.h"
 #include "stdlib.h"
 #include "string.h"
+
+// zdatou
+// USART+IDLE+DMA
+// 需要使能HAL库的延时 发送时进行了超时处理
+// 2018-10-30
+// TO DO stm32F767IGT6
+
 #if 1
 #pragma import(__use_no_semihosting)             
 //标准库需要的支持函数                 
@@ -24,7 +31,7 @@ int fputc(int ch, FILE *f)
 }
 #endif 
 
-uint8_t Timeout = 10;
+uint8_t Timeout = 10; // 默认超时时间 单位ms, 使用者必须使能HAL库的延时函数
 
  STUsart usart2, usart3, usart1, usart4, usart5, usart6, usart7, usart8;
 
@@ -42,10 +49,10 @@ void com_init(PSTUsart com)
 	com->USART_State |= 0x2; //标记数据已处理
 #if USART_DMA_ENABLE
 	com->DMA_buff = com->buff2;	
-	__HAL_UART_ENABLE_IT(&com->USART_Handler, UART_IT_IDLE);
+	__HAL_UART_ENABLE_IT(&com->USART_Handler, UART_IT_IDLE); //开启空闲中断
 	HAL_UART_Receive_DMA(&com->USART_Handler, com->DMA_buff, com->_DMA_Receive_Size);
 #else
-	HAL_UART_Receive_IT(&com->USART_Handler, com->temp_buff, 1);
+	HAL_UART_Receive_IT(&com->USART_Handler, com->temp_buff, 1);  //不使用DMA时 使用临时数组进行保存, 接收一个字符后调用接收完成回调函数
 #endif
 }
 
@@ -229,7 +236,8 @@ uint8_t receive_str_manage(PSTUsart com, void *store, uint8_t count)
 	return tmp;		
 }
 
-//发送字符函数
+//发送字符函数 
+//需要注意的时 所发送的数组必须为全局变量或者字符串常量, 因为使用的是DMA, 可能主调函数结束时串口数据还没发送完,导致数组空间被回收
 HAL_StatusTypeDef com_send_str(PSTUsart com,void* str,uint16_t len)
 {	
 #if USART_DMA_ENABLE
