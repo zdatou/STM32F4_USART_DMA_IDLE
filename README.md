@@ -1,2 +1,3 @@
 # STM32F4_USART_DMA_IDLE
 F407, USART, DMA, IDLE, LWIP, HAL
+从F1的基础上修改过来, 修复了F1中的一些小问题, 后续移植F767的
