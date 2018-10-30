@@ -26,7 +26,7 @@ int fputc(int ch, FILE *f)
 
 uint8_t Timeout = 10;
 
-STUsart usart2, usart3, usart1, usart4, usart5, usart6, usart7, usart8;
+ STUsart usart2, usart3, usart1, usart4, usart5, usart6, usart7, usart8;
 
 //初始化串口
 void com_init(PSTUsart com)
@@ -52,35 +52,55 @@ void com_init(PSTUsart com)
 //串口数组数据处理函数
 //使用DMA时,当发送的数据过大导致一个缓冲区存放不了时, 会强制交换缓冲区, 用户缓冲区内全是有效数据,但是不完整, 尾部的一部分在DMA缓冲区中。
 //需要串口下一次接收到数据才能继续发生缓存区的交换, 从而处理这部分溢出的数据。即本次发送数据太长,溢出的部分存放在另外一个缓冲区中, 当下次接收到数据时才能处理这部分数据(连同下一次的数据一起处理)。
-//如果实在太大,可以加大缓冲区的大小, 或则发送方在发送完数据后在延迟一段时间(两次receive_str_manage的调用间隔)次发送一个字节的任意数据以再次触发receive_str_manage。
+//如果实在太大,可以加大缓冲区的大小, 或则发送方在发送完数据后再延迟一段时间(两次receive_str_manage的调用间隔)再次发送一个字节的任意数据以再次触发receive_str_manage。
 //当用户未及时处理数据时 不会发生缓冲区的交换,但是当缓冲区满了后会强制发生缓冲区交换。 
-//未及时处理数据未导致DMA缓冲区一直在存放新的数据，且不会产生收到新数据的通知(因为之前的收到数据的通知还未清除),只有当用户处理完数据后DMA才会产生新的通知。
-//当用户缓冲区和DMA缓冲区都存在有效数据时,只有当用户缓冲区的数据处理完后,再次收到串口数据时才会产生一个新的收到数据的通知,如果用户处理完数据后一直未收到新
-//的数据,则DMA缓冲区的数据会一直得不到处理,导致数据得不到及时的处理。
-//后续继续完善这个问题 TODO
-//在receive_str_manage中也进行缓冲区的交换工作(只针对用户缓冲区未及时处理数据,没有交换缓冲区导致DMA缓冲区接收了多次数据的情况)
-//1.> receive_str_manage时, 发现用户缓冲区数据处理完成, 但是DMA缓冲区中存在多次接收的数据
-//2.> 交换缓冲区的时候需要判断此时是否正在进行DMA的接收(已经接收到数据)
-//   1>. 是,则不进行缓冲区的交换 稍后的DMA或者串口中断会产生一个收到数据的通知
-//   2>. 否,则交换缓冲区, 然后处理数据
+//未及时处理数据会存放咋DMA缓冲区中, 再下一次调用receive_str_manage时会被处理, 如果需要连续处理 则可以将第二个if复制一份放在第一个if前面
+//(也就是将if(com->receive_count != 0)这一段复制一份, 放在if(((com->USART_State)&0xA) == 0xA)这一段的前面)
 uint8_t receive_str_manage(PSTUsart com, void *store, uint8_t count)
 {
 	uint8_t tmp = 0;
 #if USART_DMA_ENABLE
-	if(com->receive_count != 0)
+	if(((com->USART_State)&0xA) == 0xA) //DMA缓冲区中存在数据 需要进行缓冲区交换 且用户缓冲区的数据已处理才能进行缓冲区交换 交换完成后 紧接着就处理用户缓冲区的数据
 	{
-		com->USART_State |= 0x1; //标记用户缓冲区正在处理
-		tmp = com->func(com->buff, com->receive_count, store, count); //由于使用了函数参数传递缓冲区的地址和接收的字节数 所以不需要担心在处理的过程中发生缓冲区交换
-		if(com->USART_State & 0x4) //接收过程中又收到新的数据且DMA缓冲区满了
+		if((com->_DMA_Receive_Size) != (com->DMA_RX_Handler.Instance->NDTR)) //DMA正在传输数据  不进行缓冲区交换, DMA接收完后会进行一次缓冲区交换
 		{
-			com->USART_State &= ~0x4; //清除标记  不标记数据处理已完成 不清零接收字节数 在中断中接收字节数已经被赋予了新的值
+			
 		}
 		else
 		{
-			com->USART_State &= ~0x1; //标记用户缓冲区处理已完成
-			com->receive_count = 0;  //接收数据的字节数清零
+			uint8_t *temp;
+			uint8_t buff_shift; //数组偏移量
+                                                                                                      	              	
+			HAL_UART_DMAStop(&com->USART_Handler);             //终止DMA传输                                                  	
+																														
+			temp = com->DMA_buff;                          //交换缓存  避免内存拷贝                                                         	
+			com->DMA_buff = com->buff;                                                                           	
+			com->buff = temp;
+			
+			buff_shift = 0;  //交换缓冲区后 从缓冲区的第0个位置开始 偏移量为0
+			com->_DMA_Receive_Size = USART_RECEIVE_MAX; //用户缓冲区数据处理完后, 缓冲区中无可用数据,缓冲区的全部空间都可以用来存放下一次接收的数据 接收的字节数设置成最大
+			
+			com->USART_State &= ~0x2; //标记数据未处理
+			com->receive_count = com->_DMA_Receive_Count; //保存需要处理的字节数 
+			com->_DMA_Receive_Count = 0; //重新开始进行DMA接收计数																		
+			com->USART_State &= ~0x8; //清除标记
+			HAL_UART_Receive_DMA(&com->USART_Handler, (uint8_t *)(com->DMA_buff+buff_shift), com->_DMA_Receive_Size);   //重新启动DMA传
 		}
-		com->USART_State |= 0x2; //标记用户缓冲区数据已处理
+	}
+	if(com->receive_count != 0) //用户缓冲区有数据时 开始处理用户缓冲区的数据
+	{
+		com->USART_State |= 0x1; //标记用户缓冲区正在处理
+		tmp = com->func(com->buff, com->receive_count, store, count); //由于使用了函数参数传递缓冲区的地址和接收的字节数 所以不需要担心在处理的过程中发生缓冲区交换
+		if(com->USART_State & 0x4) //处理过程中又收到新的数据且DMA缓冲区满了
+		{
+			com->USART_State &= ~0x4; //清除标记  不标记数据处理已完成 不清零接收字节数 在中断中接收字节数已经被赋予了新的值 并且缓冲区已经交换 用户缓冲区的数据又变成了未处理的状态
+		}
+		else
+		{
+			com->receive_count = 0;  //接收数据的字节数清零
+			com->USART_State |= 0x2; //标记用户缓冲区数据已处理
+		}
+		com->USART_State &= ~0x1; //标记本次用户缓冲区处理已完成
 	}
 #else	
 	static uint32_t usart1_tmp = 0;
@@ -295,6 +315,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) //接收完成回调函数  暂时
 		temp            = usart1.DMA_buff;   //交换缓存  避免内存拷贝
 		usart1.DMA_buff = usart1.buff;
 		usart1.buff     = temp;
+		
 		usart1.receive_count = usart1._DMA_Receive_Count; //保存接收的字节数
 		usart1._DMA_Receive_Size = USART_RECEIVE_MAX; //交换缓冲区后 全部空间可用 设置成最大的可接收字节数
 		usart1._DMA_Receive_Count = 0; //累加计数清零 
@@ -309,57 +330,106 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) //接收完成回调函数  暂时
 	else if(USART2 == huart->Instance)
 	{
 		uint8_t *temp;
-		usart2.receive_count = USART_RECEIVE_MAX; //计算已接收的字节数
+		usart2._DMA_Receive_Count += usart2._DMA_Receive_Size; //计算已接收的字节数
 		
 		temp            = usart2.DMA_buff;   //交换缓存  避免内存拷贝
 		usart2.DMA_buff = usart2.buff;
 		usart2.buff     = temp;
-
-		HAL_UART_Receive_DMA(&usart2.USART_Handler, (uint8_t *)usart2.DMA_buff, USART_RECEIVE_MAX); //重新启动DMA传输
+		
+		usart2.receive_count = usart2._DMA_Receive_Count; //计算接收到的字节数, 重新设置DMA接收的长度  清零累加接收长度
+		usart2._DMA_Receive_Size = USART_RECEIVE_MAX;
+		usart2._DMA_Receive_Count = 0;
+		
+		if(usart2.USART_State & 0x1) //用户缓冲区数据正在处理
+		{
+			usart2.USART_State |= 0x4; //标记用户缓冲区处理过程中接收到数据
+		}
+		usart2.USART_State &= ~0x2; //标记数据未处理
+		HAL_UART_Receive_DMA(&usart2.USART_Handler, (uint8_t *)usart2.DMA_buff, usart2._DMA_Receive_Size); //重新启动DMA传输
 	}
 	else if(USART3 == huart->Instance)
 	{
 		uint8_t *temp;
-		usart3.receive_count = USART_RECEIVE_MAX; //计算已接收的字节数
+		usart3._DMA_Receive_Count += usart3._DMA_Receive_Size; //计算已接收的字节数
 		
 		temp            = usart3.DMA_buff;   //交换缓存  避免内存拷贝
 		usart3.DMA_buff = usart3.buff;
 		usart3.buff     = temp;
 
-		HAL_UART_Receive_DMA(&usart3.USART_Handler, (uint8_t *)usart3.DMA_buff, USART_RECEIVE_MAX); //重新启动DMA传输
+		usart3.receive_count = usart3._DMA_Receive_Count;
+		usart3._DMA_Receive_Size = USART_RECEIVE_MAX;
+		usart3._DMA_Receive_Count = 0;
+		
+		if(usart3.USART_State & 0x1)
+		{
+			usart3.USART_State |= 0x4;
+		}
+		usart3.USART_State &= ~0x2;
+		
+		HAL_UART_Receive_DMA(&usart3.USART_Handler, (uint8_t *)usart3.DMA_buff, usart3._DMA_Receive_Size); //重新启动DMA传输
 	}
 	else if(UART4 == huart->Instance)
 	{
 		uint8_t *temp;
-		usart4.receive_count = USART_RECEIVE_MAX; //计算已接收的字节数
+		usart4._DMA_Receive_Count += usart4._DMA_Receive_Size; //计算已接收的字节数
 		
 		temp 			= usart4.DMA_buff; //交换缓存  避免内存拷贝
 		usart4.DMA_buff = usart4.buff;
 		usart4.buff     = temp;
 		
-		HAL_UART_Receive_DMA(&usart4.USART_Handler, (uint8_t *)usart4.DMA_buff, USART_RECEIVE_MAX); //重新启动DMA传输
+		usart4.receive_count = usart4._DMA_Receive_Count;
+		usart4._DMA_Receive_Size = USART_RECEIVE_MAX;
+		usart4._DMA_Receive_Count = 0;
+		
+		if(usart4.USART_State & 0x1)
+		{
+			usart4.USART_State |= 0x4;
+		}
+		usart4.USART_State &= ~0x2;
+		
+		HAL_UART_Receive_DMA(&usart4.USART_Handler, (uint8_t *)usart4.DMA_buff, usart4._DMA_Receive_Size); //重新启动DMA传输
 	}
 	else if(UART5 == huart->Instance)
 	{
 		uint8_t *temp;
-		usart5.receive_count = USART_RECEIVE_MAX;
+		usart5._DMA_Receive_Count += usart5._DMA_Receive_Size;
 		
 		temp 			= usart5.DMA_buff;
 		usart5.DMA_buff = usart5.buff;
 		usart5.buff		= temp;
 		
-		HAL_UART_Receive_DMA(&usart5.USART_Handler, (uint8_t *)usart5.DMA_buff, USART_RECEIVE_MAX);
+		usart5.receive_count = usart5._DMA_Receive_Count;
+		usart5._DMA_Receive_Size = USART_RECEIVE_MAX;
+		usart5._DMA_Receive_Count = 0;
+		
+		if(usart5.USART_State & 0x1)
+		{
+			usart5.USART_State |= 0x4;
+		}
+		usart5.USART_State &= ~0x2;
+		
+		HAL_UART_Receive_DMA(&usart5.USART_Handler, (uint8_t *)usart5.DMA_buff, usart5._DMA_Receive_Size);
 	}
 	else if(USART6 == huart->Instance)
 	{
 		uint8_t *temp;
-		usart6.receive_count = USART_RECEIVE_MAX;
+		usart6._DMA_Receive_Count += usart6._DMA_Receive_Size;
 		
 		temp 			= usart6.DMA_buff;
 		usart6.DMA_buff = usart6.buff;
 		usart6.buff		= temp;
 		
-		HAL_UART_Receive_DMA(&usart6.USART_Handler, (uint8_t *)usart6.DMA_buff, USART_RECEIVE_MAX);
+		usart6.receive_count = usart6._DMA_Receive_Count;
+		usart6._DMA_Receive_Size = USART_RECEIVE_MAX;
+		usart6._DMA_Receive_Count = 0;
+		
+		
+		if(usart6.USART_State & 0x1)
+		{
+			usart6.USART_State |= 0x4;
+		}
+		usart6.USART_State &= ~0x2;	
+		HAL_UART_Receive_DMA(&usart6.USART_Handler, (uint8_t *)usart6.DMA_buff, usart6._DMA_Receive_Size);
 	}
 #else
 	if(USART1 == huart->Instance)
@@ -420,14 +490,16 @@ void USART1_IRQHandler(void)                	//串口1中断服务程序
 			usart1.buff = temp;
 			buff_shift = 0;  //交换缓冲区后 从缓冲区的第0个位置开始 偏移量为0
 			usart1._DMA_Receive_Size = USART_RECEIVE_MAX; //用户缓冲区数据处理完后, 缓冲区中无可用数据,缓冲区的全部空间都可以用来存放下一次接收的数据 接收的字节数设置成最大
-			usart1.USART_State &= ~0x3; //标记数据未处理
+			usart1.USART_State &= ~0x2; //标记数据未处理
 			usart1.receive_count = usart1._DMA_Receive_Count; //保存需要处理的字节数 
 			usart1._DMA_Receive_Count = 0; //重新开始进行DMA接收计数
+			usart1.USART_State &= ~0x8; //清除标记
 		}
 		else //数据未处理或正在处理时,不进行缓冲区交换,新接收的数据追加在缓冲区的尾部
-		{
+		{			
 			buff_shift = usart1._DMA_Receive_Count;  //数据未处理完 则接着上一次接收的尾部开始存放
 			usart1._DMA_Receive_Size = USART_RECEIVE_MAX - buff_shift; //计算新的最大可接收字符长度
+			usart1.USART_State |= 0x08; //标记DMA缓冲区中有数据, 需要进行缓冲区的交换
 		}
 		                                                                                                         	
 		HAL_UART_Receive_DMA(&usart1.USART_Handler, (uint8_t *)(usart1.DMA_buff+buff_shift), usart1._DMA_Receive_Size);   //重新启动DMA传输           	
@@ -442,28 +514,30 @@ void USART2_IRQHandler(void)                	//串口2中断服务程序
 	HAL_UART_IRQHandler(&usart2.USART_Handler);
 #if USART_DMA_ENABLE
 	uint8_t *temp;
-	uint8_t buff_shift;
+	uint8_t buff_shift;  //数组偏移量
 	if((USART2->SR & USART_SR_IDLE) != RESET)
 	{
 		__HAL_UART_CLEAR_IDLEFLAG(&usart2.USART_Handler);       //清除空闲中断        
-		usart2._DMA_Receive_Count    += usart2._DMA_Receive_Size - usart2.DMA_RX_Handler.Instance->NDTR; //计算已接收的字节数  
-		HAL_UART_DMAStop(&usart2.USART_Handler);      //终止DMA传输  
+		usart2._DMA_Receive_Count    += usart2._DMA_Receive_Size - usart2.DMA_RX_Handler.Instance->NDTR; //计算已接收的字节数  使用累加的方式 可能上一次的数据没有处理   
+		HAL_UART_DMAStop(&usart2.USART_Handler);            //终止DMA传输  
 		
-		if(usart2.USART_State & 0x2)
+		if(usart2.USART_State & 0x2)					    //数据已处理
 		{
-			temp            = usart2.DMA_buff;		//交换缓存  避免内存拷贝   
-			usart2.DMA_buff = usart2.buff;
-			usart2.buff     = temp;
-			buff_shift = 0;
-			usart2._DMA_Receive_Size = USART_RECEIVE_MAX;
-			usart2.USART_State &= ~0x3;
-			usart2.receive_count= usart2._DMA_Receive_Count;
-			usart2._DMA_Receive_Count = 0;
+			temp            		  = usart2.DMA_buff;   //交换缓存  避免内存拷贝   
+			usart2.DMA_buff 		  = usart2.buff;
+			usart2.buff     		  = temp;
+			buff_shift 				  = 0;    		       //交换缓冲区后 从缓冲区的第0个位置开始 偏移量为0
+			usart2._DMA_Receive_Size  = USART_RECEIVE_MAX; //用户缓冲区数据处理完后, 缓冲区中无可用数据,缓冲区的全部空间都可以用来存放下一次接收的数据 接收的字节数设置成最大
+			usart2.USART_State 		 &= ~0x2; 			   //标记数据未处理
+			usart2.receive_count	  = usart2._DMA_Receive_Count;//保存需要处理的字节数 
+			usart2._DMA_Receive_Count = 0;				   //重新开始进行DMA接收计数
+			usart2.USART_State 		 &= ~0x8;			   //清除标记
 		}
-		else
+		else //数据未处理或正在处理时,不进行缓冲区交换,新接收的数据追加在缓冲区的尾部
 		{
-			buff_shift = usart2._DMA_Receive_Count;
-			usart2._DMA_Receive_Size = USART_RECEIVE_MAX - buff_shift;
+			buff_shift 				 = usart2._DMA_Receive_Count;   //数据未处理完 则接着上一次接收的尾部开始存放
+			usart2._DMA_Receive_Size = USART_RECEIVE_MAX - buff_shift; //计算新的最大可接收字符长度
+			usart2.USART_State		 |= 0x8;   					  //标记DMA缓冲区中有数据, 需要进行缓冲区的交换
 		}
 		HAL_UART_Receive_DMA(&usart2.USART_Handler, (uint8_t *)(usart2.DMA_buff + buff_shift), usart2._DMA_Receive_Size);  //重新启动DMA传输   
 	}
@@ -475,13 +549,14 @@ void USART2_IRQHandler(void)                	//串口2中断服务程序
 void USART3_IRQHandler(void)                	//串口3中断服务程序
 {
 	HAL_UART_IRQHandler(&usart3.USART_Handler);
+	//注释与串口1相同
 #if USART_DMA_ENABLE	
 	uint8_t *temp;
-	uint8_t buff_shift;
+	uint8_t buff_shift; //数组偏移量
 	if((USART3->SR & USART_SR_IDLE) != RESET) //空闲中断
 	{
 		__HAL_UART_CLEAR_IDLEFLAG(&usart3.USART_Handler);       //清除空闲中断   
-		usart3._DMA_Receive_Count += usart3._DMA_Receive_Size - usart3.DMA_RX_Handler.Instance->NDTR; //计算已接收的字节数
+		usart3._DMA_Receive_Count += usart3._DMA_Receive_Size - usart3.DMA_RX_Handler.Instance->NDTR; //计算已接收的字节数 使用累加的方式 可能上一次的数据没有处理   
 		HAL_UART_DMAStop(&usart3.USART_Handler);  //终止DMA传输
 		
 		if(usart3.USART_State & 0x2)
@@ -491,14 +566,16 @@ void USART3_IRQHandler(void)                	//串口3中断服务程序
 			usart3.buff     = temp;
 			buff_shift = 0;
 			usart3._DMA_Receive_Size = USART_RECEIVE_MAX;
-			usart3.USART_State &= ~0x3;
+			usart3.USART_State &= ~0x2;
 			usart3.receive_count= usart3._DMA_Receive_Count;
 			usart3._DMA_Receive_Count = 0;
+			usart3.USART_State &= ~0x8;
 		}
 		else
 		{
 			buff_shift = usart3._DMA_Receive_Count;
 			usart3._DMA_Receive_Size = USART_RECEIVE_MAX - buff_shift;
+			usart3.USART_State |= 0x08;
 		}
 	
 		HAL_UART_Receive_DMA(&usart3.USART_Handler, (uint8_t *)(usart3.DMA_buff+buff_shift), usart3._DMA_Receive_Size); //重新启动DMA传输
@@ -511,6 +588,7 @@ void USART3_IRQHandler(void)                	//串口3中断服务程序
 void UART4_IRQHandler(void) 					//串口4中断服务程序
 {
 	HAL_UART_IRQHandler(&usart4.USART_Handler);
+	//注释与串口1相同
 #if USART_DMA_ENABLE	
 	uint8_t *temp;
 	uint8_t buff_shift;
@@ -527,14 +605,16 @@ void UART4_IRQHandler(void) 					//串口4中断服务程序
 			usart4.buff     = temp;
 			buff_shift = 0;
 			usart4._DMA_Receive_Size = USART_RECEIVE_MAX;
-			usart4.USART_State &= ~0x3;
+			usart4.USART_State &= ~0x2;
 			usart4.receive_count= usart4._DMA_Receive_Count;
 			usart4._DMA_Receive_Count = 0;
+			usart4.USART_State &= ~0x8;
 		}
 		else
 		{
 			buff_shift = usart4._DMA_Receive_Count;
 			usart4._DMA_Receive_Size = USART_RECEIVE_MAX - buff_shift;
+			usart4.USART_State |= 0x08;
 		}
 	
 		HAL_UART_Receive_DMA(&usart4.USART_Handler, (uint8_t *)(usart4.DMA_buff+buff_shift), usart4._DMA_Receive_Size); //重新启动DMA传输
@@ -547,6 +627,7 @@ void UART4_IRQHandler(void) 					//串口4中断服务程序
 void UART5_IRQHandler(void) 					//串口5中断服务程序
 {
 	HAL_UART_IRQHandler(&usart5.USART_Handler);
+	//注释与串口1相同
 #if USART_DMA_ENABLE	
 	uint8_t *temp;
 	uint8_t buff_shift;
@@ -563,14 +644,16 @@ void UART5_IRQHandler(void) 					//串口5中断服务程序
 			usart5.buff     = temp;
 			buff_shift = 0;
 			usart5._DMA_Receive_Size = USART_RECEIVE_MAX;
-			usart5.USART_State &= ~0x3;
+			usart5.USART_State &= ~0x2;
 			usart5.receive_count= usart5._DMA_Receive_Count;
 			usart5._DMA_Receive_Count = 0;
+			usart5.USART_State &= ~0x8;
 		}
 		else
 		{
 			buff_shift = usart5._DMA_Receive_Count;
 			usart5._DMA_Receive_Size = USART_RECEIVE_MAX - buff_shift;
+			usart5.USART_State |= 0x08;
 		}
 	
 		HAL_UART_Receive_DMA(&usart5.USART_Handler, (uint8_t *)(usart5.DMA_buff+buff_shift), usart5._DMA_Receive_Size); //重新启动DMA传输
@@ -583,6 +666,7 @@ void UART5_IRQHandler(void) 					//串口5中断服务程序
 void USART6_IRQHandler(void) 					//串口6中断服务程序
 {
 	HAL_UART_IRQHandler(&usart6.USART_Handler);
+	//注释与串口1相同
 #if USART_DMA_ENABLE	
 	uint8_t *temp;
 	uint8_t buff_shift;
@@ -599,14 +683,16 @@ void USART6_IRQHandler(void) 					//串口6中断服务程序
 			usart6.buff     = temp;
 			buff_shift = 0;
 			usart6._DMA_Receive_Size = USART_RECEIVE_MAX;
-			usart6.USART_State &= ~0x3;
+			usart6.USART_State &= ~0x2;
 			usart6.receive_count= usart6._DMA_Receive_Count;
 			usart6._DMA_Receive_Count = 0;
+			usart6.USART_State &= ~0x8;
 		}
 		else
 		{
 			buff_shift = usart6._DMA_Receive_Count;
 			usart6._DMA_Receive_Size = USART_RECEIVE_MAX - buff_shift;
+			usart6.USART_State |= 0x08;
 		}
 	
 		HAL_UART_Receive_DMA(&usart6.USART_Handler, (uint8_t *)(usart6.DMA_buff+buff_shift), usart6._DMA_Receive_Size); //重新启动DMA传输
@@ -1045,7 +1131,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
 		HAL_NVIC_EnableIRQ(DMA2_Stream6_IRQn);	
 		
 		HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 2, 3); //Rx
-		HAL_NVIC_EnableIRQ(DMA2_Stream6_IRQn);	
+		HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);	
 #endif
 	}
 }

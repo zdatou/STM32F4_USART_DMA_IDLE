@@ -21,7 +21,11 @@ typedef struct _st_usart
 	uint8_t					buff2[USART_RECEIVE_MAX];//双缓存  避免内存拷贝
 	uint16_t				_DMA_Receive_Count; //DMA接收的字节数,当未及时处理数据时,该变量的值代表未处理的字节数。该变量不对外使用！！！！
 	uint16_t				_DMA_Receive_Size; //每次启动DMA时设置要接收的字节数。该变量不对外使用！！！
-	uint8_t					USART_State; //串口状态  bit0-bit1 -- 0:用户缓冲区数据未处理 1:用户缓冲区数据正在处理 2:用户缓冲区数据已处理  bit2-- 1:处理过程中接收到数据且DMA缓冲区满了 
+	uint8_t					USART_State; //串口状态  
+										 //bit0 -- 1:用户缓冲区数据正在处理, 0:用户缓冲区数据未处理 
+										 //bit1 -- 1:用户缓冲区数据已处理, 	 0:用户缓冲区数据未处理
+										 //bit2 -- 1:处理过程中接收到数据且DMA缓冲区满了, 0:正常接收
+										 //bit3 -- 1:DMA缓冲区中有数据, 需要交换缓冲区,   0:正常接收
 	DMA_HandleTypeDef       DMA_TX_Handler;
 	DMA_HandleTypeDef       DMA_RX_Handler;
 	
@@ -30,12 +34,12 @@ typedef struct _st_usart
 #endif
 }STUsart, *PSTUsart;
 
-extern STUsart usart1;
-extern STUsart usart2;
-extern STUsart usart3;
-extern STUsart usart4;
-extern STUsart usart5;
-extern STUsart usart6;
+ extern STUsart usart1;
+ extern STUsart usart2;
+ extern STUsart usart3;
+ extern STUsart usart4;
+ extern STUsart usart5;
+ extern STUsart usart6;
 
 
 void com_init(PSTUsart com);

@@ -211,9 +211,9 @@
         <Bp>
           <Number>0</Number>
           <Type>0</Type>
-          <LineNumber>59</LineNumber>
+          <LineNumber>692</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134253244</Address>
+          <Address>134231534</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -222,14 +222,14 @@
           <BreakIfRCount>1</BreakIfRCount>
           <Filename>C:\Users\datou\Desktop\缃戠粶瀹為獙3 RAW_UDP瀹為獙\SYSTEM\usart\usart.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\Tempate\../SYSTEM/usart/usart.c\59</Expression>
+          <Expression>\\Tempate\../SYSTEM/usart/usart.c\692</Expression>
         </Bp>
         <Bp>
           <Number>1</Number>
           <Type>0</Type>
-          <LineNumber>411</LineNumber>
+          <LineNumber>65</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134230652</Address>
+          <Address>134253878</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -238,7 +238,39 @@
           <BreakIfRCount>1</BreakIfRCount>
           <Filename>C:\Users\datou\Desktop\缃戠粶瀹為獙3 RAW_UDP瀹為獙\SYSTEM\usart\usart.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\Tempate\../SYSTEM/usart/usart.c\411</Expression>
+          <Expression>\\Tempate\../SYSTEM/usart/usart.c\65</Expression>
+        </Bp>
+        <Bp>
+          <Number>2</Number>
+          <Type>0</Type>
+          <LineNumber>92</LineNumber>
+          <EnabledFlag>1</EnabledFlag>
+          <Address>134253960</Address>
+          <ByteObject>0</ByteObject>
+          <HtxType>0</HtxType>
+          <ManyObjects>0</ManyObjects>
+          <SizeOfObject>0</SizeOfObject>
+          <BreakByAccess>0</BreakByAccess>
+          <BreakIfRCount>1</BreakIfRCount>
+          <Filename>C:\Users\datou\Desktop\缃戠粶瀹為獙3 RAW_UDP瀹為獙\SYSTEM\usart\usart.c</Filename>
+          <ExecCommand></ExecCommand>
+          <Expression>\\Tempate\../SYSTEM/usart/usart.c\92</Expression>
+        </Bp>
+        <Bp>
+          <Number>3</Number>
+          <Type>0</Type>
+          <LineNumber>420</LineNumber>
+          <EnabledFlag>1</EnabledFlag>
+          <Address>0</Address>
+          <ByteObject>0</ByteObject>
+          <HtxType>0</HtxType>
+          <ManyObjects>0</ManyObjects>
+          <SizeOfObject>0</SizeOfObject>
+          <BreakByAccess>0</BreakByAccess>
+          <BreakIfRCount>0</BreakIfRCount>
+          <Filename>..\SYSTEM\usart\usart.c</Filename>
+          <ExecCommand></ExecCommand>
+          <Expression></Expression>
         </Bp>
       </Breakpoint>
       <WatchWindow1>
@@ -246,6 +278,11 @@
           <count>0</count>
           <WinNumber>1</WinNumber>
           <ItemText>usart1,0x0A</ItemText>
+        </Ww>
+        <Ww>
+          <count>1</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>usart6</ItemText>
         </Ww>
       </WatchWindow1>
       <Tracepoint>

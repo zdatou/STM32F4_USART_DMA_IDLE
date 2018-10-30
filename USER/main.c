@@ -62,7 +62,7 @@ void usart_init(void)
 	usart2.USART_Handler.Init.BaudRate = 115200;
 	usart2.USART_Handler.Init.Parity = UART_PARITY_NONE;
 	usart2.func = usart2_call_back;
-	//com_init(&usart2);
+	com_init(&usart2);
 	
 	usart3.USART_Handler.Instance = USART3;
 	usart3.USART_Handler.Init.BaudRate = 115200;
